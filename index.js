@@ -12,7 +12,7 @@ http.createServer((req, res) => {
 });
 
 // --- CONFIG ---
-const OWNER_ID = "TEU_ID_AQUI"; // mete aqui o teu ID do Discord
+const OWNER_ID = "1364280936304218155"; // mete aqui o teu ID do Discord
 
 // --- Bot Discord ---
 const client = new Client({
