@@ -245,7 +245,7 @@ client.on(Events.MessageCreate, async (msg) => {
         if (msg.author.id !== OWNER_ID)
             return msg.reply("Só o Crespo pode desligar o CraspoBot∛.");
         msg.reply("A desligar...");
-        process.exit(0);
+        process.exit(1);
     }
 
     if (msg.content === "_reset") {
