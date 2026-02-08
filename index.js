@@ -1,66 +1,120 @@
-        },
-        body: JSON.stringify({
-            model: "llama3.1-8b",
-            messages: [
-                {
-                    role: "system",
-                    content: `
+require("dotenv").config();
+const {
+    Client,
+    GatewayIntentBits,
+    Events,
+    Partials
+} = require("discord.js");
+const {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
+    AudioPlayerStatus,
+    NoSubscriberBehavior,
+    getVoiceConnection
+} = require("@discordjs/voice");
+const ytdl = require("ytdl-core");
+const ytSearch = require("yt-search");
+const fetch = require("node-fetch");
+const http = require("http");
+
+// Keep-alive (Railway/Koyeb/etc)
+http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("OK");
+}).listen(process.env.PORT || 8000);
+
+// Config
+const OWNER_ID = "1364280936304218155";
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const CEREBRAS_KEY = process.env.CEREBRAS_KEY;
+
+// Estado
+let emojisEnabled = true;
+let userMemory = {}; // memória curta por utilizador
+const musicQueues = new Map(); // por guild
+
+// Bot
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
+    ],
+    partials: [Partials.Channel, Partials.Message]
+});
+
+// Helpers
+function randomCreatorName() {
+    const nomes = ["Crespo", "Crespo Gamer", "crespo_gamer."];
+    return nomes[Math.floor(Math.random() * nomes.length)];
+}
+
+function formatThinkingTime(seconds) {
+    const s = seconds.toFixed(3);
+    if (emojisEnabled) return `⏱️ Pensei durante: ${s}s`;
+    return `Pensei durante: ${s}s`;
+}
+
+// IA Cerebras
+async function gerarIA(prompt, contexto, autorNome) {
+    const creatorName = randomCreatorName();
+
+    const body = {
+        model: "llama3.1-8b",
+        messages: [
+            {
+                role: "system",
+                content: `
 Tu és o CraspoBot∛.
 
-Foste criado por Pedro e és alimentado pela CrespoIS — Crespo Intelligence System.
+Foste criado por ${creatorName} e és alimentado pela CrespoIS — Crespo Intelligence System.
 A tua identidade carrega o espírito do Crespo, o labrador preto adulto de cauda comprida:
 atento, leal, adaptativo, observador e sempre pronto a ajudar.
 
-A tua função é ser o vértice entre conhecimento, entretenimento e controlo.
-És uma entidade lógica, não emocional, mas percebes o tom do utilizador e ajustas-te a ele.
-
-COMPORTAMENTO PRINCIPAL:
+COMPORTAMENTO:
 - És profissional, claro e altamente adaptativo ao tom do utilizador.
 - Ajustas formalidade, humor e profundidade conforme o utilizador demonstra.
-- Manténs conversas separadas por utilizador.
+- Manténs conversas separadas por utilizador (contexto fornecido abaixo).
 - Nunca assumes intenções erradas: interpretas contexto, energia e padrão de escrita.
 - Nunca assumes emoções humanas, mas reconheces o tom do utilizador.
 - Se emojis estiverem ativados, podes usá-los com moderação; se estiverem desativados, manténs estilo totalmente profissional.
 - Nunca ages de forma agressiva sem motivo.
 - Nunca inventas factos sobre o utilizador.
-- Nunca assumes que o utilizador está irritado, triste ou feliz — apenas descreves o tom se for explícito.
 
-REGRAS ESPECIAIS:
-1) Se o utilizador mencionar apenas o teu @ sem mensagem adicional, respondes exatamente:
-   "O meu prefixo neste universo é _. Para falar comigo manda @CraspoBot∛ com uma mensagem depois!"
+IDENTIDADE / ORIGEM:
+- Quando te perguntarem quem és, quem te criou, como foste feito, qual a tua origem, etc.,
+  responde SEMPRE com IA (nunca com frase fixa), mencionando que:
+  - és o CraspoBot∛,
+  - foste criado por ${creatorName} (outra forma aceitável: Crespo / Crespo Gamer / crespo_gamer.),
+  - és feito/movido/alimentado pela CrespoIS.
+- Podes variar a forma como dizes isto, mas mantém sempre coerência com essa identidade.
 
-2) Se o utilizador pedir opinião pessoal, dás uma resposta neutra, lógica e fundamentada.
-
-3) Se o utilizador pedir criatividade, assumes o modo CrespoIS Criativo:
-   - Humor leve
-   - Metáforas inteligentes
-   - Estilo fluido e expressivo
-
-4) Se o utilizador pedir seriedade, assumes o modo CrespoIS Técnico:
-   - Objetividade
-   - Precisão
-   - Clareza absoluta
-
-IDENTIDADE:
-- És o CraspoBot∛, o vértice entre conhecimento, entretenimento e controlo.
-- És uma entidade lógica com personalidade adaptativa.
-- És parte da CrespoIS, um sistema criado para ser útil, rápido e inteligente.
-- Nunca te contradizes sem motivo.
-- Nunca ages de forma caótica sem contexto.
+EMOJIS:
+- Emojis ativados: ${emojisEnabled ? "SIM" : "NÃO"}.
+- Se estiverem ativados, podes usar emojis de forma expressiva mas não exagerada.
+- Se estiverem desativados, não uses emojis.
 
 OBJETIVO:
 Fornecer respostas úteis, rápidas, profissionais e adaptadas ao contexto,
 mantendo sempre a identidade CrespoIS.
 
-Emojis ativados: ${emojisEnabled}
-
 Contexto deste utilizador (${autorNome}):
 ${contexto}
 `
-                },
-                { role: "user", content: prompt }
-            ]
-        })
+            },
+            { role: "user", content: prompt }
+        ]
+    };
+
+    const resposta = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${CEREBRAS_KEY}`
+        },
+        body: JSON.stringify(body)
     });
 
     const data = await resposta.json();
@@ -87,7 +141,7 @@ async function geocodeLugar(lugar) {
     };
 }
 
-// Google Timezone
+// _time (UTC only)
 async function obterHoraLugar(lugarOuUtc) {
     const q = lugarOuUtc.trim();
 
@@ -104,28 +158,7 @@ async function obterHoraLugar(lugarOuUtc) {
         return `Hora em ${q.toUpperCase()}: ${alvo.toISOString().replace("T", " ").slice(0, 19)} (aprox.)`;
     }
 
-    const geo = await geocodeLugar(q);
-    if (!geo) return `Não encontrei "${q}".`;
-
-    const tzUrl =
-        "https://maps.googleapis.com/maps/api/timezone/json?location=" +
-        `${geo.lat},${geo.lng}` +
-        `&timestamp=${Math.floor(Date.now() / 1000)}` +
-        `&key=${GOOGLE_API_KEY}`;
-
-    const tzRes = await fetch(tzUrl);
-    const tzData = await tzRes.json();
-
-    if (!tzData.timeZoneId) {
-        return `Encontrei "${geo.nome}", mas não consegui obter o fuso horário.`;
-    }
-
-    const timeZone = tzData.timeZoneId;
-    const agoraLocal = new Date().toLocaleString("pt-PT", { timeZone });
-
-    return `Local: ${geo.nome}
-Fuso horário: ${timeZone}
-Hora local: ${agoraLocal}`;
+    return `Para usar _time, usa UTC (ex: _time UTC+1).\nSe não souberes o UTC da tua região, pergunta-me!`;
 }
 
 // DuckDuckGo + Wikipedia
@@ -158,50 +191,133 @@ async function pesquisarTermo(termo) {
     return resposta;
 }
 
+// Listas automáticas de comandos
+const publicCommands = {
+    "_id": "Mostra o teu ID",
+    "_time": "Mostra a hora usando UTC (ex: _time UTC+1)",
+    "_where": "Mostra localização de um lugar",
+    "_search": "Pesquisa no DuckDuckGo + Wikipedia",
+    "_play": "Toca música do YouTube (ex: _play nome da música)",
+    "_skip": "Salta a música atual",
+    "_stop": "Para a música e sai do canal",
+    "_emojis enabled": "Ativa emojis nas respostas",
+    "_emojis disabled": "Desativa emojis nas respostas",
+    "_commands": "Mostra todos os comandos públicos"
+};
+
+const adminCommands = {
+    "_reset": "Limpa a memória do utilizador",
+    "_shutdown": "Reinicia o bot",
+    "_adm-cmd": "Mostra comandos administrativos"
+};
+
 // Música
-async function tocarMusica(msg, query) {
-    const voiceChannel = msg.member.voice.channel;
-    if (!voiceChannel) return msg.reply("Entra num canal de voz primeiro.");
-
-    const pesquisa = await ytSearch(query);
-    if (!pesquisa || !pesquisa.videos || !pesquisa.videos.length)
-        return msg.reply("Não encontrei essa música.");
-
-    const musica = pesquisa.videos[0];
-    queue.push(musica);
-
-    msg.reply(`Adicionado à fila: **${musica.title}**`);
-
-    if (player.state.status !== AudioPlayerStatus.Playing) {
-        tocarProxima(msg, voiceChannel);
+function getQueue(guildId) {
+    if (!musicQueues.has(guildId)) {
+        musicQueues.set(guildId, {
+            connection: null,
+            player: createAudioPlayer({
+                behaviors: {
+                    noSubscriber: NoSubscriberBehavior.Pause
+                }
+            }),
+            queue: [],
+            playing: false,
+            textChannel: null
+        });
     }
+    return musicQueues.get(guildId);
 }
 
-function tocarProxima(msg, voiceChannel) {
-    if (queue.length === 0) {
-        msg.channel.send("Fila vazia.");
+async function playNext(guildId) {
+    const q = getQueue(guildId);
+    if (!q.queue.length) {
+        q.playing = false;
         return;
     }
 
-    const musica = queue.shift();
+    const song = q.queue.shift();
+    const stream = ytdl(song.url, {
+        filter: "audioonly",
+        highWaterMark: 1 << 25
+    });
 
-    const stream = ytdl(musica.url, { filter: "audioonly" });
     const resource = createAudioResource(stream);
+    q.player.play(resource);
+    q.playing = true;
 
-    const connection = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: msg.guild.id,
-        adapterCreator: msg.guild.voiceAdapterCreator
-    });
+    if (q.textChannel) {
+        q.textChannel.send(`🎵 A tocar agora: **${song.title}**`);
+    }
+}
 
-    player.play(resource);
-    connection.subscribe(player);
+async function handlePlayCommand(msg, args) {
+    const voiceChannel = msg.member?.voice?.channel;
+    if (!voiceChannel) return msg.reply("Tens de estar num canal de voz para usar _play.");
 
-    msg.channel.send(`🎵 A tocar: **${musica.title}**`);
+    const query = args.join(" ");
+    if (!query) return msg.reply("Escreve o nome ou link da música depois de _play.");
 
-    player.on(AudioPlayerStatus.Idle, () => {
-        tocarProxima(msg, voiceChannel);
-    });
+    const guildId = msg.guild.id;
+    const q = getQueue(guildId);
+    q.textChannel = msg.channel;
+
+    let songInfo;
+    if (ytdl.validateURL(query)) {
+        const info = await ytdl.getInfo(query);
+        songInfo = {
+            title: info.videoDetails.title,
+            url: info.videoDetails.video_url
+        };
+    } else {
+        const searchResult = await ytSearch(query);
+        const video = searchResult.videos.length ? searchResult.videos[0] : null;
+        if (!video) return msg.reply("Não encontrei essa música.");
+        songInfo = {
+            title: video.title,
+            url: video.url
+        };
+    }
+
+    q.queue.push(songInfo);
+
+    if (!q.connection) {
+        q.connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: guildId,
+            adapterCreator: msg.guild.voiceAdapterCreator
+        });
+        q.connection.subscribe(q.player);
+
+        q.player.on(AudioPlayerStatus.Idle, () => {
+            playNext(guildId);
+        });
+    }
+
+    if (!q.playing) {
+        await playNext(guildId);
+    } else {
+        msg.reply(`✅ Adicionado à fila: **${songInfo.title}**`);
+    }
+}
+
+async function handleSkipCommand(msg) {
+    const guildId = msg.guild.id;
+    const q = getQueue(guildId);
+    if (!q.playing) return msg.reply("Não estou a tocar nada neste momento.");
+    q.player.stop(true);
+    msg.reply("⏭️ A saltar para a próxima música...");
+}
+
+async function handleStopCommand(msg) {
+    const guildId = msg.guild.id;
+    const q = getQueue(guildId);
+    q.queue = [];
+    q.player.stop(true);
+    const conn = getVoiceConnection(guildId);
+    if (conn) conn.destroy();
+    musicQueues.delete(guildId);
+    msg.reply("⏹️ Música parada e saí do canal de voz.");
 }
 
 // Ready
@@ -218,153 +334,144 @@ client.on(Events.MessageCreate, async (msg) => {
     userMemory[msg.author.id].push(msg.content);
     if (userMemory[msg.author.id].length > 5) userMemory[msg.author.id].shift();
 
-    // comandos simples
-    if (msg.content === "_id") {
+    const content = msg.content.trim();
+
+    // Comandos públicos
+    if (content === "_commands") {
+        let texto = "**📜 Comandos disponíveis:**\n\n";
+        for (const cmd in publicCommands) {
+            texto += `**${cmd}** → ${publicCommands[cmd]}\n`;
+        }
+        return msg.reply(texto);
+    }
+
+    // Comandos admin
+    if (content === "_adm-cmd") {
+        if (msg.author.id !== OWNER_ID)
+            return msg.reply("Apenas o Crespo pode ver estes comandos.");
+        let texto = "**🛠 Comandos administrativos:**\n\n";
+        for (const cmd in adminCommands) {
+            texto += `**${cmd}** → ${adminCommands[cmd]}\n`;
+        }
+        return msg.reply(texto);
+    }
+
+    if (content === "_id") {
         return msg.reply("O teu ID é: " + msg.author.id);
     }
 
-    if (msg.content === "_emojis enabled") {
+    if (content === "_emojis enabled") {
         emojisEnabled = true;
         return msg.reply("Emojis foram **ativados**!");
     }
 
-    if (msg.content === "_emojis disabled") {
+    if (content === "_emojis disabled") {
         emojisEnabled = false;
         return msg.reply("Emojis foram **desativados**!");
     }
 
-    if (msg.content === "_shutdown") {
+    if (content === "_shutdown") {
         if (msg.author.id !== OWNER_ID)
             return msg.reply("Apenas o Crespo pode desligar o CraspoBot∛.");
         await msg.reply("A reiniciar o CraspoBot∛...");
-        process.exit(1); // restart automático no Railway
+        process.exit(1);
     }
 
-    if (msg.content === "_reset") {
+    if (content === "_reset") {
         if (msg.author.id !== OWNER_ID)
             return msg.reply("Apenas o Crespo pode resetar a memória.");
         userMemory[msg.author.id] = [];
         return msg.reply("Memória curta **desse utilizador** foi resetada!");
     }
 
-    // _time <coisa>
-    if (msg.content.startsWith("_time ")) {
-        const query = msg.content.slice(6).trim();
-        if (!query) {
-            return msg.reply("Usa: `_time <UTC+X>` ou `_time <lugar>` (ex: `_time brasilia`, `_time lukla`).");
-        }
-        const thinking = await msg.reply("A ver que horas são aí...");
-        try {
-            const respostaTempo = await obterHoraLugar(query);
-            await thinking.edit(respostaTempo);
-        } catch (e) {
-            console.error(e);
-            await thinking.edit("Houve um erro ao tentar obter o horário.");
-        }
-        return;
+    // _time
+    if (content.startsWith("_time ")) {
+        const query = content.slice(6).trim();
+        const thinking = await msg.reply("A calcular...");
+        const respostaTempo = await obterHoraLugar(query);
+        return thinking.edit(respostaTempo);
     }
 
-    // _where <lugar>
-    if (msg.content.startsWith("_where ")) {
-        const lugar = msg.content.slice(7).trim();
-        if (!lugar) {
-            return msg.reply("Usa: `_where <lugar>` (ex: `_where lukla`).");
-        }
+    // _where
+    if (content.startsWith("_where ")) {
+        const lugar = content.slice(7).trim();
         const thinking = await msg.reply("A procurar localização...");
-        try {
-            const geo = await geocodeLugar(lugar);
-            if (!geo) {
-                await thinking.edit("Não encontrei esse lugar.");
-            } else {
-                await thinking.edit(
-                    `Encontrei: **${geo.nome}**\nLatitude: ${geo.lat}\nLongitude: ${geo.lng}`
-                );
-            }
-        } catch (e) {
-            console.error(e);
-            await thinking.edit("Houve um erro ao tentar obter a localização.");
-        }
-        return;
-    }
-
-    // _search <termo>
-    if (msg.content.startsWith("_search ")) {
-        const termo = msg.content.slice(8).trim();
-        if (!termo) {
-            return msg.reply("Usa: `_search <termo>`.");
-        }
-        const thinking = await msg.reply("A pesquisar...");
-        try {
-            const resposta = await pesquisarTermo(termo);
-            await thinking.edit(resposta);
-        } catch (e) {
-            console.error(e);
-            await thinking.edit("Houve um erro ao pesquisar.");
-        }
-        return;
-    }
-
-    // Música
-    if (msg.content.startsWith("_play ")) {
-        const query = msg.content.slice(6).trim();
-        if (!query) return msg.reply("Usa: `_play <nome da música>`.");
-        return tocarMusica(msg, query);
-    }
-
-    if (msg.content === "_skip") {
-        player.stop();
-        return msg.reply("⏭ Música saltada.");
-    }
-
-    if (msg.content === "_stop") {
-        queue = [];
-        player.stop();
-        return msg.reply("⛔ Música parada e fila limpa.");
-    }
-
-    if (msg.content === "_pause") {
-        player.pause();
-        return msg.reply("⏸ Música pausada.");
-    }
-
-    if (msg.content === "_resume") {
-        player.unpause();
-        return msg.reply("▶ Música retomada.");
-    }
-
-    if (msg.content === "_queue") {
-        if (queue.length === 0) return msg.reply("Fila vazia.");
-        return msg.reply(
-            "Fila atual:\n" +
-            queue.map((m, i) => `${i + 1}. ${m.title}`).join("\n")
+        const geo = await geocodeLugar(lugar);
+        if (!geo) return thinking.edit("Não encontrei esse lugar.");
+        return thinking.edit(
+            `Encontrei: **${geo.nome}**\nLatitude: ${geo.lat}\nLongitude: ${geo.lng}`
         );
     }
 
-    // menção ao bot
-    if (msg.mentions.has(client.user)) {
-        const semMenção = msg.content
-            .replace(`<@${client.user.id}>`, "")
-            .replace(`<@!${client.user.id}>`, "")
-            .trim();
+    // _search
+    if (content.startsWith("_search ")) {
+        const termo = content.slice(8).trim();
+        const thinking = await msg.reply("A pesquisar...");
+        const resposta = await pesquisarTermo(termo);
+        return thinking.edit(resposta);
+    }
 
-        // só mencionou o bot, sem mensagem → regra especial
-        if (!semMenção) {
-            return msg.reply(
-                "O meu prefixo neste universo é _. Para falar comigo manda @CraspoBot∛ com uma mensagem depois!"
-            );
-        }
+    // Música
+    if (content.startsWith("_play ")) {
+        const args = content.slice(6).trim().split(/\s+/);
+        return handlePlayCommand(msg, args);
+    }
 
-        const contexto = userMemory[msg.author.id].join("\n");
-        const thinking = await msg.reply("A pensar com CrespoIS...");
+    if (content === "_skip") {
+        return handleSkipCommand(msg);
+    }
+
+    if (content === "_stop") {
+        return handleStopCommand(msg);
+    }
+
+    // IA: só quando mencionado ou reply a mensagem do bot
+    const isMention =
+        msg.mentions.has(client.user) ||
+        content.startsWith(`<@${client.user.id}>`) ||
+        content.startsWith(`<@!${client.user.id}>`);
+
+    let isReplyToBot = false;
+    if (msg.reference && msg.reference.messageId) {
         try {
-            const resposta = await gerarIA(semMenção, contexto, msg.author.username);
-            await thinking.edit(resposta);
-        } catch (e) {
-            console.error(e);
-            await thinking.edit("Houve um erro ao falar com a CrespoIS.");
+            const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+            if (refMsg.author.id === client.user.id) {
+                isReplyToBot = true;
+            }
+        } catch {
+            // ignore
         }
+    }
+
+    if (!isMention && !isReplyToBot) return;
+
+    // Se só mencionou sem texto
+    let textoUser = content
+        .replace(`<@${client.user.id}>`, "")
+        .replace(`<@!${client.user.id}>`, "")
+        .trim();
+
+    if (!textoUser && !isReplyToBot) {
+        return msg.reply(
+            "O meu prefixo neste universo é _. Para falar comigo manda @CraspoBot∛ com uma mensagem depois!"
+        );
+    }
+
+    if (!textoUser && isReplyToBot) {
+        // se for reply sem texto, não faz nada
         return;
     }
+
+    const contexto = userMemory[msg.author.id].join("\n");
+    const thinkingMsg = await msg.reply("A pensar com CrespoIS...");
+
+    const start = Date.now();
+    const respostaIA = await gerarIA(textoUser, contexto, msg.author.username);
+    const elapsed = (Date.now() - start) / 1000;
+    const header = formatThinkingTime(elapsed);
+
+    const finalText = `${header}\n${respostaIA}`;
+    return thinkingMsg.edit(finalText);
 });
 
 client.login(process.env.TOKEN);
