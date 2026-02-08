@@ -234,4 +234,9 @@ client.on(Events.MessageCreate, async (msg) => {
 
 client.login(process.env.TOKEN);
 
+if (msg.content === "_id") {
+    msg.reply("O teu ID é: " + msg.author.id);
+}
+
+
 
