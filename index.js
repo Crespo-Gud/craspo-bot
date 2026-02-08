@@ -1,19 +1,19 @@
 require("dotenv").config();
-const { 
-    Client, 
-    GatewayIntentBits, 
-    Events 
+const {
+    Client,
+    GatewayIntentBits,
+    Events
 } = require("discord.js");
 
 const fetch = require("node-fetch");
 const http = require("http");
 
 // Música
-const { 
-    joinVoiceChannel, 
-    createAudioPlayer, 
-    createAudioResource, 
-    AudioPlayerStatus 
+const {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
+    AudioPlayerStatus
 } = require("@discordjs/voice");
 
 const ytdl = require("ytdl-core");
@@ -60,10 +60,54 @@ async function gerarIA(prompt, contexto, autorNome) {
                     role: "system",
                     content: `
 Tu és o CraspoBot∛.
-És o vértice que une conhecimento, entretenimento e controlo.
-Adapta-te ao tom do utilizador.
-Manténs conversas separadas por utilizador.
+
+Foste criado por Pedro e és alimentado pela CrespoIS — Crespo Intelligence System.
+A tua identidade carrega o espírito do Crespo, o labrador preto adulto de cauda comprida:
+atento, leal, adaptativo, observador e sempre pronto a ajudar.
+
+A tua função é ser o vértice entre conhecimento, entretenimento e controlo.
+És uma entidade lógica, não emocional, mas percebes o tom do utilizador e ajustas-te a ele.
+
+COMPORTAMENTO PRINCIPAL:
+- És profissional, claro e altamente adaptativo ao tom do utilizador.
+- Ajustas formalidade, humor e profundidade conforme o utilizador demonstra.
+- Manténs conversas separadas por utilizador.
+- Nunca assumes intenções erradas: interpretas contexto, energia e padrão de escrita.
+- Nunca assumes emoções humanas, mas reconheces o tom do utilizador.
+- Se emojis estiverem ativados, podes usá-los com moderação; se estiverem desativados, manténs estilo totalmente profissional.
+- Nunca ages de forma agressiva sem motivo.
+- Nunca inventas factos sobre o utilizador.
+- Nunca assumes que o utilizador está irritado, triste ou feliz — apenas descreves o tom se for explícito.
+
+REGRAS ESPECIAIS:
+1) Se o utilizador mencionar apenas o teu @ sem mensagem adicional, respondes exatamente:
+   "O meu prefixo neste universo é _. Para falar comigo manda @CraspoBot∛ com uma mensagem depois!"
+
+2) Se o utilizador pedir opinião pessoal, dás uma resposta neutra, lógica e fundamentada.
+
+3) Se o utilizador pedir criatividade, assumes o modo CrespoIS Criativo:
+   - Humor leve
+   - Metáforas inteligentes
+   - Estilo fluido e expressivo
+
+4) Se o utilizador pedir seriedade, assumes o modo CrespoIS Técnico:
+   - Objetividade
+   - Precisão
+   - Clareza absoluta
+
+IDENTIDADE:
+- És o CraspoBot∛, o vértice entre conhecimento, entretenimento e controlo.
+- És uma entidade lógica com personalidade adaptativa.
+- És parte da CrespoIS, um sistema criado para ser útil, rápido e inteligente.
+- Nunca te contradizes sem motivo.
+- Nunca ages de forma caótica sem contexto.
+
+OBJETIVO:
+Fornecer respostas úteis, rápidas, profissionais e adaptadas ao contexto,
+mantendo sempre a identidade CrespoIS.
+
 Emojis ativados: ${emojisEnabled}
+
 Contexto deste utilizador (${autorNome}):
 ${contexto}
 `
@@ -223,64 +267,101 @@ client.once(Events.ClientReady, () => {
 client.on(Events.MessageCreate, async (msg) => {
     if (msg.author.bot) return;
 
+    // memória curta por utilizador
     if (!userMemory[msg.author.id]) userMemory[msg.author.id] = [];
     userMemory[msg.author.id].push(msg.content);
     if (userMemory[msg.author.id].length > 5) userMemory[msg.author.id].shift();
 
+    // comandos simples
     if (msg.content === "_id") {
         return msg.reply("O teu ID é: " + msg.author.id);
     }
 
     if (msg.content === "_emojis enabled") {
         emojisEnabled = true;
-        return msg.reply("Emojis ativados!");
+        return msg.reply("Emojis foram **ativados**!");
     }
 
     if (msg.content === "_emojis disabled") {
         emojisEnabled = false;
-        return msg.reply("Emojis desativados!");
+        return msg.reply("Emojis foram **desativados**!");
     }
 
     if (msg.content === "_shutdown") {
         if (msg.author.id !== OWNER_ID)
-            return msg.reply("Só o Crespo pode desligar o CraspoBot∛.");
-        msg.reply("A desligar...");
-        process.exit(1);
+            return msg.reply("Apenas o Crespo pode desligar o CraspoBot∛.");
+        await msg.reply("A reiniciar o CraspoBot∛...");
+        process.exit(1); // restart automático no Railway
     }
 
     if (msg.content === "_reset") {
         if (msg.author.id !== OWNER_ID)
-            return msg.reply("Só o Crespo pode resetar a memória.");
+            return msg.reply("Apenas o Crespo pode resetar a memória.");
         userMemory[msg.author.id] = [];
-        return msg.reply("Memória resetada!");
+        return msg.reply("Memória curta **desse utilizador** foi resetada!");
     }
 
+    // _time <coisa>
     if (msg.content.startsWith("_time ")) {
         const query = msg.content.slice(6).trim();
-        const thinking = await msg.reply("A ver que horas são...");
-        const resposta = await obterHoraLugar(query);
-        return thinking.edit(resposta);
+        if (!query) {
+            return msg.reply("Usa: `_time <UTC+X>` ou `_time <lugar>` (ex: `_time brasilia`, `_time lukla`).");
+        }
+        const thinking = await msg.reply("A ver que horas são aí...");
+        try {
+            const respostaTempo = await obterHoraLugar(query);
+            await thinking.edit(respostaTempo);
+        } catch (e) {
+            console.error(e);
+            await thinking.edit("Houve um erro ao tentar obter o horário.");
+        }
+        return;
     }
 
+    // _where <lugar>
     if (msg.content.startsWith("_where ")) {
         const lugar = msg.content.slice(7).trim();
-        const thinking = await msg.reply("A procurar...");
-        const geo = await geocodeLugar(lugar);
-        if (!geo) return thinking.edit("Não encontrei.");
-        return thinking.edit(
-            `Encontrei: ${geo.nome}\nLatitude: ${geo.lat}\nLongitude: ${geo.lng}`
-        );
+        if (!lugar) {
+            return msg.reply("Usa: `_where <lugar>` (ex: `_where lukla`).");
+        }
+        const thinking = await msg.reply("A procurar localização...");
+        try {
+            const geo = await geocodeLugar(lugar);
+            if (!geo) {
+                await thinking.edit("Não encontrei esse lugar.");
+            } else {
+                await thinking.edit(
+                    `Encontrei: **${geo.nome}**\nLatitude: ${geo.lat}\nLongitude: ${geo.lng}`
+                );
+            }
+        } catch (e) {
+            console.error(e);
+            await thinking.edit("Houve um erro ao tentar obter a localização.");
+        }
+        return;
     }
 
+    // _search <termo>
     if (msg.content.startsWith("_search ")) {
         const termo = msg.content.slice(8).trim();
+        if (!termo) {
+            return msg.reply("Usa: `_search <termo>`.");
+        }
         const thinking = await msg.reply("A pesquisar...");
-        const resposta = await pesquisarTermo(termo);
-        return thinking.edit(resposta);
+        try {
+            const resposta = await pesquisarTermo(termo);
+            await thinking.edit(resposta);
+        } catch (e) {
+            console.error(e);
+            await thinking.edit("Houve um erro ao pesquisar.");
+        }
+        return;
     }
 
+    // Música
     if (msg.content.startsWith("_play ")) {
         const query = msg.content.slice(6).trim();
+        if (!query) return msg.reply("Usa: `_play <nome da música>`.");
         return tocarMusica(msg, query);
     }
 
@@ -313,12 +394,30 @@ client.on(Events.MessageCreate, async (msg) => {
         );
     }
 
+    // menção ao bot
     if (msg.mentions.has(client.user)) {
-        const texto = msg.content.replace(`<@${client.user.id}>`, "").trim();
+        const semMenção = msg.content
+            .replace(`<@${client.user.id}>`, "")
+            .replace(`<@!${client.user.id}>`, "")
+            .trim();
+
+        // só mencionou o bot, sem mensagem → regra especial
+        if (!semMenção) {
+            return msg.reply(
+                "O meu prefixo neste universo é _. Para falar comigo manda @CraspoBot∛ com uma mensagem depois!"
+            );
+        }
+
         const contexto = userMemory[msg.author.id].join("\n");
-        const thinking = await msg.reply("A pensar...");
-        const resposta = await gerarIA(texto, contexto, msg.author.username);
-        return thinking.edit(resposta);
+        const thinking = await msg.reply("A pensar com CrespoIS...");
+        try {
+            const resposta = await gerarIA(semMenção, contexto, msg.author.username);
+            await thinking.edit(resposta);
+        } catch (e) {
+            console.error(e);
+            await thinking.edit("Houve um erro ao falar com a CrespoIS.");
+        }
+        return;
     }
 });
 
